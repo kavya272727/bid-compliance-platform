@@ -96,16 +96,34 @@ class MockGovernmentRouteTests(unittest.TestCase):
 class VerificationEngineTests(unittest.TestCase):
     def run_for(self, bidder_id, records):
         tables = {
-            "bidders": [{"id": bidder_id, "name": bidder_id}],
+            "bidders": [{
+                "id": bidder_id,
+                "name": bidder_id,
+                "pan": next((record.get("identifier") for record in records if record.get("source_type") == "BLACKLIST"), "TESTPAN1234"),
+            }],
             "mock_government_verification_records": records,
         }
+        blacklist_record = next(
+            (record for record in records if record.get("source_type") == "BLACKLIST"),
+            None,
+        )
         with patch.object(verification_engine, "supabase", FakeSupabase(tables)):
-            return verification_engine.run_verification(bidder_id)
+            with patch.object(
+                verification_engine,
+                "get_blacklist_status",
+                return_value=blacklist_record,
+            ):
+                return verification_engine.run_verification(bidder_id)
 
     def test_blacklist_is_hard_stop(self):
         result = self.run_for(
             "BLACKLISTED",
-            [{"bidder_id": "BLACKLISTED", "source_type": "BLACKLIST", "status": "BLACKLISTED"}],
+            [{
+                "bidder_id": "BLACKLISTED",
+                "source_type": "BLACKLIST",
+                "identifier": "BLACK3456J",
+                "status": "BLACKLISTED",
+            }],
         )
         self.assertEqual(result["overall_decision"], "FAIL")
         self.assertTrue(result["blacklist_hard_stop"])
